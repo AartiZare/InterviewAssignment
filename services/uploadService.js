@@ -1,7 +1,4 @@
 const XlsxPopulate = require('xlsx-populate');
-const dotenv = require('dotenv');
-
-dotenv.config();
 
 exports.processUpload = async (excelFile) => {
     const filePath = `${process.env.UPLOAD_PATH}/updated_${excelFile.name}`;
