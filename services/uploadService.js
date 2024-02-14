@@ -1,65 +1,27 @@
 const XlsxPopulate = require('xlsx-populate');
-const fs = require('fs').promises;
-const { Readable } = require('stream');
+const fs = require('fs/promises');
+const dotenv = require('dotenv');
+
+dotenv.config();
 
 exports.processUpload = async (excelFile) => {
-    const tempFilePath = `${process.env.UPLOAD_PATH}/temp_${excelFile.name}`;
-    const updatedFilePath = `${process.env.UPLOAD_PATH}/updated_${excelFile.name}`;
+    const filePath = `${process.env.UPLOAD_PATH}/updated_${excelFile.name}`;
 
     try {
-        const readableStream = new Readable();
-        readableStream.push(excelFile.data);
-        readableStream.push(null);
-        await fs.writeFile(tempFilePath, excelFile.data);
-
-        const workbook = await XlsxPopulate.fromFileAsync(tempFilePath);
+        const workbook = await XlsxPopulate.fromDataAsync(excelFile.data);
         const sheet = workbook.sheet(0);
 
-        const chunkSize = 1024 * 1024; // 1MB chunk size
-        const totalRows = 10000;
-
-        const usedRange = sheet.usedRange();
-        if (!usedRange) return { success: false, message: "Sheet is empty" };
-
-        const statusColumnIndex = findColumnIndex(sheet, 'status');
-        if (statusColumnIndex === -1) {
-            return { success: false, message: "Status column not found" };
+        // Update status column up to rowIndex 10
+        for (let rowIndex = 2; rowIndex <= 100; rowIndex++) {
+            const status = rowIndex % 2 === 0 ? 'failed' : 'success';
+            sheet.cell(`A${rowIndex}`).value(`${status}`);
         }
 
-        let failedCount = 0;
-        let successCount = 0;
+        await workbook.toFileAsync(filePath);
 
-        for (let chunkStart = 2; chunkStart <= totalRows; chunkStart += chunkSize) {
-            const chunkEnd = Math.min(chunkStart + chunkSize - 1, totalRows);
-
-            for (let rowIndex = chunkStart; rowIndex <= chunkEnd; rowIndex++) {
-                const status = rowIndex % 2 === 0 ? 'failed' : 'success';
-                sheet.cell(rowIndex, statusColumnIndex).value(status);
-
-                if (status === 'failed') {
-                    failedCount++;
-                } else if (status === 'success') {
-                    successCount++;
-                }
-            }
-            await workbook.toFileAsync(updatedFilePath);
-        }
-
-        console.log('Failed Count:', failedCount);
-        console.log('Success Count:', successCount);
-
-        return { success: true, filePath: updatedFilePath };
+        return { success: true, filePath };
     } catch (error) {
         console.error(error);
         throw new Error('Error processing upload');
-    } finally {
-        // Cleanup: remove the temporary file
-        await fs.unlink(tempFilePath).catch(console.error);
     }
 };
-
-function findColumnIndex(sheet, columnName) {
-    const usedRange = sheet.usedRange();
-    return usedRange ? Array.from({ length: usedRange.endCell().columnNumber() }, (_, i) => i + 1)
-        .find(columnIndex => sheet.cell(usedRange.startCell().rowNumber(), columnIndex).value()?.toLowerCase() === columnName.toLowerCase()) || -1 : -1;
-}
